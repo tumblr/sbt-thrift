@@ -95,8 +95,12 @@ def type_of(field, thrifty = false, nested = false)
   base = case field[:type]
   when ::Thrift::Types::I32:
     if field[:enum_class]
+      tnamespace = $tnamespace
+      if last(field[:enum_class]).to_s == "Status"
+        tnamespace = "com.twitter.thrift"
+      end
       thrifty ?
-      $tnamespace + "." + last(field[:enum_class]) :
+      tnamespace + "." + last(field[:enum_class]) :
       last(field[:enum_class])
     else
       thrifty && nested ? "java.lang.Integer" : "Int"
@@ -257,8 +261,20 @@ import com.twitter.logging.Logger
 import com.twitter.ostrich.admin.Service
 import com.twitter.util._
 import com.twitter.sbt.thrift._
+import com.twitter.thrift.scala.Status
 import com.twitter.finagle.stats.OstrichStatsReceiver
 
+<% if extends_s.length > 0 %>
+trait <%=obj%><%= extends_s %> {
+  override implicit def voidUnit(f: Future[_]): Future[java.lang.Void] = f.map(x=>null)
+
+  <% for m in methods do %>
+    def <%=idiomize(m)%>(<%=m.args.map{|f| f[:name].camelize + ": " + type_of(f)}.join(", ") %>): Future[<%=type_of(m.retval)%>]
+  <% end %>
+
+  def toThrift = new <%=obj%>ThriftAdapter(this)
+}
+<% else %>
 trait <%=obj%> {
   implicit def voidUnit(f: Future[_]): Future[java.lang.Void] = f.map(x=>null)
 
@@ -268,7 +284,37 @@ trait <%=obj%> {
 
   def toThrift = new <%=obj%>ThriftAdapter(this)
 }
+<% end %>
 
+trait <%=obj%>Server extends Service {
+  val log = Logger.get(getClass)
+  val serverName: String
+  val service: <%=obj%>
+}
+
+<% if extends_s.length > 0 %>
+trait <%=obj%>ThriftServer extends <%=obj%>Server {
+
+  def thriftCodec = ThriftServerFramedCodec()
+  val thriftProtocolFactory = new TBinaryProtocol.Factory()
+  val thriftPort: Int
+
+  var server: Server = null
+
+  def start = {
+    val thriftImpl = new <%=tnamespace%>.<%=obj%>.Service(service.toThrift, thriftProtocolFactory)
+    val serverAddr = new InetSocketAddress(thriftPort)
+    server = ServerBuilder().codec(thriftCodec).name(serverName).reportTo(new OstrichStatsReceiver).bindTo(serverAddr).build(thriftImpl)
+  }
+
+  def shutdown = synchronized {
+    if (server != null) {
+      service.shutdown()
+      server.close(0.seconds)
+    }
+  }
+}
+<% else %>
 trait <%=obj%>Server extends Service with <%=obj%>{
   val log = Logger.get(getClass)
 
@@ -291,12 +337,13 @@ trait <%=obj%>Server extends Service with <%=obj%>{
     }
   }
 }
+<% end %>
 
 class <%=obj%>ThriftAdapter(val <%=obj.to_s.camelize%>: <%=obj%>) extends <%=tnamespace%>.<%=obj%>.ServiceIface {
   val log = Logger.get(getClass)
   def this() = this(null)
 
-  <% for m in methods do %>
+  <% for m in all_methods do %>
     def <%=m.name%>(<%=m.args.map{|f| f[:name].camelize + ": " + type_of(f, true)}.join(", ") %>) = {
       try {
         <%=obj.to_s.camelize%>.<%=idiomize(m)%>(<%=m.args.map{|f| wrapper(f) }.join(", ")%>)
@@ -327,7 +374,7 @@ class <%=obj%>ClientAdapter(val <%=obj.to_s.camelize%>: <%=tnamespace%>.<%=obj%>
   val log = Logger.get(getClass)
   def this() = this(null)
 
-  <% for m in methods do %>
+  <% for m in all_methods do %>
     def <%=idiomize(m)%>(<%=m.args.map{|f| f[:name].camelize + ": " + type_of(f)}.join(", ") %>) = {
       try {
         <%=obj.to_s.camelize%>.<%=m.name%>(<%=m.args.map{|f| unwrap(f, f[:name].camelize) }.join(", ")%>)
@@ -503,7 +550,21 @@ EOF
       obj = root.const_get(name)
       if obj.const_defined?(:Client)
         client = obj.const_get(:Client)
+        if client.superclass.to_s == "Twitter::Thrift::ThriftService::Client"
+          extends_s = " extends com.twitter.thrift.scala.ThriftService"
+        else
+          extends_s = ""
+        end
         methods = client.instance_methods(false).map {|m| m.to_s[/send_(.{3,})$/, 1] }.compact.map {|name|
+          if name
+            out = MStruct.new
+            out.name = name
+            out.args = client.const_find(name.capitalize + "_args").new.struct_fields.to_a.sort_by{|f| f.first}.map{|f| f.last }
+            out.retval = client.const_find(name.capitalize + "_result").new.struct_fields[0]
+            out
+          end
+        }
+        all_methods = client.instance_methods.map {|m| m.to_s[/send_(.{3,})$/, 1] }.compact.map {|name|
           if name
             out = MStruct.new
             out.name = name
