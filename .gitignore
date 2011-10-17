@@ -11,3 +11,4 @@ src/main/scala/com/twitter/sbt/BuildInfo.scala
 .ensime
 .ensime.msg.counter
 ensime_port
+*.swp
