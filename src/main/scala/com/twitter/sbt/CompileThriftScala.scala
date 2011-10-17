@@ -47,11 +47,21 @@ trait CompileThriftScala extends DefaultProject with CompileThriftFinagle with C
 
   def idiomizeMethods = true
 
+  def extraRubyLoadPaths(): Seq[String] = Seq()
+
   lazy val compileThriftScala = task {
+    import scala.collection.jcl.Conversions.unconvertList
+    import scala.collection.jcl.ArrayList
     val name = "/ruby/codegen.rb"
     val stream = getClass.getResourceAsStream(name)
     val reader = new InputStreamReader(stream)
     val container = new ScriptingContainer(LocalContextScope.SINGLETON, LocalVariableBehavior.TRANSIENT)
+    extraRubyLoadPaths() match {
+      case Nil =>
+      case paths =>
+        val rubyPaths = new ArrayList ++ paths.toList
+        container.setLoadPaths(unconvertList(rubyPaths))
+    }
     container.runScriptlet(reader, "__TMP__")
     val module = container.runScriptlet("Codegen")
     thriftNamespaces.foreach { case ThriftNamespace(_rubyNs, _javaNs, _targetNs) =>

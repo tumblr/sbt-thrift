@@ -503,7 +503,7 @@ EOF
       obj = root.const_get(name)
       if obj.const_defined?(:Client)
         client = obj.const_get(:Client)
-        methods = client.instance_methods.map {|m| m.to_s[/send_(.{3,})$/, 1] }.compact.map {|name|
+        methods = client.instance_methods(false).map {|m| m.to_s[/send_(.{3,})$/, 1] }.compact.map {|name|
           if name
             out = MStruct.new
             out.name = name
