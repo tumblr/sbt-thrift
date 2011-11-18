@@ -5,12 +5,43 @@ class SbtThriftPlugin(info: ProjectInfo) extends PluginProject(info)
     with StandardManagedProject with DefaultRepos with SubversionPublisher {
   override def disableCrossPaths = true
 
-  val jruby = "org.jruby" % "jruby-complete" % "1.6.0.RC2"
+  val jruby = "org.jruby" % "jruby-complete" % "1.6.0"
 
-  override def subversionRepository = Some("http://svn.local.twitter.com/maven-public")
+  override val proxyRepo = environment.get("TUMBLR_REPO")
+  override def repositories = {
+    val defaultRepos = List(
+      "ibiblio" at "http://mirrors.ibiblio.org/pub/mirrors/maven2/",
+      "twitter.com" at "http://maven.twttr.com/",
+      "powermock-api" at "http://powermock.googlecode.com/svn/repo/",
+      "scala-tools.org" at "http://scala-tools.org/repo-releases/",
+      "testing.scala-tools.org" at "http://scala-tools.org/repo-releases/testing/",
+      "oauth.net" at "http://oauth.googlecode.com/svn/code/maven",
+      "download.java.net" at "http://download.java.net/maven/2/",
+      "atlassian" at "https://m2proxy.atlassian.com/repository/public/",
+      // for netty:
+      "jboss" at "http://repository.jboss.org/nexus/content/groups/public/"
+    )
+    proxyRepo match {
+      case Some(url) => localRepos + ("Tumblr Nexus Repo" at url)
+      case None => super.repositories ++ Set(defaultRepos: _*)
+    }
+  }
+  override def ivyRepositories = Seq(Resolver.defaultLocal(None)) ++ repositories
+
   override def managedStyle = ManagedStyle.Maven
-  def snapshotDeployRepo = "libs-snapshots-local"
-  def releaseDeployRepo = "libs-releases-local"
+  def publishUrl = environment.get("TUMBLR_PUBLISH_URL")
+  def snapshotDeployRepo = "snapshots"
+  def releaseDeployRepo = "releases"
+
+  lazy val publishTo = publishUrl match {
+    case Some(url) => if (version.toString.endsWith("SNAPSHOT")) {
+      "Tumblr Nexus" at (url + "/" + snapshotDeployRepo)
+    } else {
+      "Tumblr Nexus" at (url + "/" + releaseDeployRepo)
+    }
+    case None => throw new Exception("No TUMBLR_PUBLISH_URL specified")
+  }
+  Credentials(Path.userHome / ".ivy2" / ".credentials", log)
 
   override def pomExtra =
     <licenses>
