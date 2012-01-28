@@ -2,12 +2,22 @@ import sbt._
 import com.twitter.sbt._
 
 class SbtThriftPlugin(info: ProjectInfo) extends PluginProject(info)
-    with StandardManagedProject with DefaultRepos with SubversionPublisher {
-  override def disableCrossPaths = true
-
+  with TumblrRepos
+{
   val jruby = "org.jruby" % "jruby-complete" % "1.6.0"
+  override def pomExtra =
+    <licenses>
+      <license>
+        <name>Apache 2</name>
+        <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+        <distribution>repo</distribution>
+      </license>
+    </licenses>
+}
 
-  override val proxyRepo = environment.get("TUMBLR_REPO")
+trait TumblrRepos extends StandardManagedProject {
+  // repository setup
+  def proxyRepo = environment.get("TUMBLR_REPO")
   override def repositories = {
     val defaultRepos = List(
       "ibiblio" at "http://mirrors.ibiblio.org/pub/mirrors/maven2/",
@@ -27,8 +37,7 @@ class SbtThriftPlugin(info: ProjectInfo) extends PluginProject(info)
     }
   }
   override def ivyRepositories = Seq(Resolver.defaultLocal(None)) ++ repositories
-
-  override def managedStyle = ManagedStyle.Maven
+  // nexus deployment setup
   def publishUrl = environment.get("TUMBLR_PUBLISH_URL")
   def snapshotDeployRepo = "snapshots"
   def releaseDeployRepo = "releases"
@@ -42,13 +51,4 @@ class SbtThriftPlugin(info: ProjectInfo) extends PluginProject(info)
     case None => throw new Exception("No TUMBLR_PUBLISH_URL specified")
   }
   Credentials(Path.userHome / ".ivy2" / ".credentials", log)
-
-  override def pomExtra =
-    <licenses>
-      <license>
-        <name>Apache 2</name>
-        <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
-        <distribution>repo</distribution>
-      </license>
-    </licenses>
 }
