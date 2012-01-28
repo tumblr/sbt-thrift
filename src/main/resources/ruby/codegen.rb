@@ -290,6 +290,7 @@ trait <%=obj%>Server extends Service {
   val log = Logger.get(getClass)
   val serverName: String
   val service: <%=obj%>
+  protected def defaultShutdownTimeout: Duration = 1.second
 }
 
 <% if extends_s.length > 0 %>
@@ -309,8 +310,7 @@ trait <%=obj%>ThriftServer extends <%=obj%>Server {
 
   def shutdown = synchronized {
     if (server != null) {
-      service.shutdown()
-      server.close(0.seconds)
+      server.close(defaultShutdownTimeout)
     }
   }
 }
@@ -333,7 +333,7 @@ trait <%=obj%>Server extends Service with <%=obj%>{
 
   def shutdown = synchronized {
     if (server != null) {
-      server.close(0.seconds)
+      server.close(defaultShutdownTimeout)
     }
   }
 }
